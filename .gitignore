@@ -11,6 +11,7 @@ build/
 # Secrets & local state
 .env
 token_cache.json
+guild_colors.json
 *.db
 *.db-shm
 *.db-wal

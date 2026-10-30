@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = [
     "aw-client>=0.5.11",
     "aw-core>=0.5.11",
+    "Pillow>=10.0.0",
 ]
 
 [project.scripts]
@@ -18,3 +19,8 @@ aw-watcher-discord = "aw_watcher_discord:main"
 
 [tool.setuptools.packages.find]
 include = ["aw_watcher_discord*"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["."]

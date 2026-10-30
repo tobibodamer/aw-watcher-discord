@@ -11,6 +11,12 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from .colors import (
+    DISCORD_BLURPLE,
+    build_state_colors,
+    extract_dominant_color,
+)
+
 logger = logging.getLogger(__name__)
 
 OP_HANDSHAKE = 0
@@ -44,7 +50,10 @@ class DiscordRPCClient:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.token_cache_path = (cache_dir or Path.cwd()) / "token_cache.json"
+        base_cache = cache_dir or Path.cwd()
+        self.token_cache_path = base_cache / "token_cache.json"
+        self.guild_cache_path = base_cache / "guild_colors.json"
+        self.guild_cache: Dict[str, Dict[str, Any]] = self._load_guild_cache()
         self.pipe: Optional[Any] = None
         self.user_id: Optional[str] = None
         self.username: Optional[str] = None
@@ -235,6 +244,63 @@ class DiscordRPCClient:
                 pass
             self.pipe = None
 
+    def _load_guild_cache(self) -> Dict[str, Dict[str, Any]]:
+        if not self.guild_cache_path.exists():
+            return {}
+        try:
+            return json.loads(self.guild_cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _save_guild_cache(self) -> None:
+        try:
+            self.guild_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self.guild_cache_path.write_text(
+                json.dumps(self.guild_cache, indent=2), encoding="utf-8"
+            )
+        except Exception as exc:
+            logger.debug(f"Could not save guild color cache: {exc}")
+
+    def get_guild_metadata(self, guild_id: Optional[str]) -> Dict[str, Any]:
+        if not guild_id:
+            if "dm" not in self.guild_cache:
+                self.guild_cache["dm"] = {
+                    "id": "dm",
+                    "name": "Direct Call",
+                    "icon_url": None,
+                    "base_color": DISCORD_BLURPLE,
+                    "state_colors": build_state_colors(DISCORD_BLURPLE),
+                }
+                self._save_guild_cache()
+            return self.guild_cache["dm"]
+
+        gid = str(guild_id)
+        cached = self.guild_cache.get(gid)
+        if cached and cached.get("state_colors") and cached.get("name"):
+            return cached
+
+        guild_name = f"Server {gid[:6]}"
+        icon_url: Optional[str] = None
+        try:
+            res = self.request("GET_GUILD", args={"guild_id": gid})
+            gdata = res.get("data") or {}
+            guild_name = gdata.get("name") or guild_name
+            icon_url = gdata.get("icon_url")
+        except Exception as exc:
+            logger.debug(f"GET_GUILD failed for {gid}: {exc}")
+
+        base_color = extract_dominant_color(icon_url)
+        entry = {
+            "id": gid,
+            "name": guild_name,
+            "icon_url": icon_url,
+            "base_color": base_color,
+            "state_colors": build_state_colors(base_color),
+        }
+        self.guild_cache[gid] = entry
+        self._save_guild_cache()
+        return entry
+
     def fetch_voice_event_data(self, include_volatile_pings: bool = False) -> Optional[Dict[str, Any]]:
         channel_res = self.request("GET_SELECTED_VOICE_CHANNEL")
         channel = channel_res.get("data")
@@ -284,31 +350,61 @@ class DiscordRPCClient:
         self_deaf = bool(own_vs.get("self_deaf", voice_settings.get("deaf", False)))
         server_mute = bool(own_vs.get("mute", False))
         server_deaf = bool(own_vs.get("deaf", False))
-
-        if server_deaf or self_deaf:
-            status_suffix = ", Deaf"
-        elif server_mute or self_mute:
-            status_suffix = ", Muted"
-        else:
-            status_suffix = ""
+        suppress = bool(own_vs.get("suppress", False))
 
         raw_type = channel.get("type", 2)
         channel_type = CHANNEL_TYPE_NAMES.get(raw_type, f"type_{raw_type}")
         channel_name = channel.get("name") or "Private Call"
-        short_channel = channel_name[:22].rstrip() if len(channel_name) > 22 else channel_name
-        label = f"{short_channel} ({len(participants)}{status_suffix})"
+        is_afk_channel = "afk" in channel_name.lower()
+
+        if server_deaf or self_deaf or is_afk_channel:
+            voice_status = "deafened"
+            status_suffix = ", Deaf"
+        elif server_mute or self_mute or suppress:
+            voice_status = "muted"
+            status_suffix = ", Muted"
+        elif len(participants) <= 1:
+            voice_status = "solo"
+            status_suffix = ""
+        else:
+            voice_status = "active"
+            status_suffix = ""
+
+        guild_meta = self.get_guild_metadata(channel.get("guild_id"))
+        guild_key = guild_meta["id"]
+        guild_name = guild_meta["name"]
+        state_colors = guild_meta["state_colors"]
+        color = state_colors.get(voice_status, state_colors["active"])
+        color_key = f"discord:{guild_key}:{voice_status}"
+
+        # Keep label concise (<= 28 chars) so Duration in the timeline tooltip never wraps
+        prefix = f"{guild_name[:8].strip()} / " if guild_key != "dm" else ""
+        tail = f" ({len(participants)}{status_suffix})"
+        max_ch_len = max(8, 28 - len(prefix) - len(tail))
+        short_channel = (
+            channel_name[:max_ch_len].rstrip()
+            if len(channel_name) > max_ch_len
+            else channel_name
+        )
+        label = f"{prefix}{short_channel}{tail}"
 
         return {
             "label": label,
-            "title": f"{channel_name} ({len(participants)} in call)",
+            "title": f"{guild_name} / {channel_name} ({len(participants)} in call)",
             "channel_id": str(channel.get("id")),
             "channel_name": channel_name,
             "channel_type": channel_type,
             "guild_id": channel.get("guild_id"),
+            "guild_name": guild_name,
+            "guild_icon_url": guild_meta.get("icon_url"),
+            "voice_status": voice_status,
+            "color": color,
+            "color_key": color_key,
             "self_mute": self_mute,
             "self_deaf": self_deaf,
             "server_mute": server_mute,
             "server_deaf": server_deaf,
+            "suppress": suppress,
             "participant_count": len(participants),
             "participants": participants,
             "selected_voice_channel": channel,

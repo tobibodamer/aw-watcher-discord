@@ -14,7 +14,8 @@ from aw_core.config import load_config_toml
 from aw_core.log import setup_logging
 from aw_core.models import Event
 
-from aw_watcher_discord.rpc import DiscordIPCError, DiscordRPCClient
+from .colors import sync_guild_categories_to_aw
+from .rpc import DiscordIPCError, DiscordRPCClient
 
 WATCHER_NAME = "aw-watcher-discord"
 EVENT_TYPE = "general.stopwatch.discord"
@@ -79,6 +80,7 @@ def main() -> None:
 
     was_in_voice = False
     last_title = None
+    synced_guilds = set()
 
     while True:
         try:
@@ -87,11 +89,22 @@ def main() -> None:
 
             voice_data = rpc.fetch_voice_event_data(include_volatile_pings=include_pings)
             if voice_data:
+                guild_key = str(voice_data.get("guild_id") or "dm")
+                if guild_key not in synced_guilds:
+                    guild_meta = rpc.get_guild_metadata(voice_data.get("guild_id"))
+                    if sync_guild_categories_to_aw(
+                        aw.server_address,
+                        guild_meta["id"],
+                        guild_meta["name"],
+                        guild_meta["state_colors"],
+                    ):
+                        synced_guilds.add(guild_key)
+
                 title = voice_data["title"]
                 if not was_in_voice or title != last_title:
                     logging.info(
                         f"Active voice call: {title} "
-                        f"(mute={voice_data['self_mute']}, deaf={voice_data['self_deaf']})"
+                        f"[status={voice_data['voice_status']}, color={voice_data['color']}]"
                     )
                     was_in_voice = True
                     last_title = title
