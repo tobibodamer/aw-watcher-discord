@@ -1,0 +1,16 @@
+# Virtual environment & Python build artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Secrets & local state
+.env
+token_cache.json
+*.db
+*.db-shm
+*.db-wal

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aw-watcher-discord"
+version = "0.1.0"
+description = "Discord voice RPC watcher for ActivityWatch"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "aw-client>=0.5.11",
+    "aw-core>=0.5.11",
+]
+
+[project.scripts]
+aw-watcher-discord = "aw_watcher_discord:main"
+
+[tool.setuptools.packages.find]
+include = ["aw_watcher_discord*"]
