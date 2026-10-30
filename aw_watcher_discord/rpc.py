@@ -286,17 +286,17 @@ class DiscordRPCClient:
         server_deaf = bool(own_vs.get("deaf", False))
 
         if server_deaf or self_deaf:
-            status_tag = "Deafened"
+            status_suffix = ", Deaf"
         elif server_mute or self_mute:
-            status_tag = "Muted"
+            status_suffix = ", Muted"
         else:
-            status_tag = "Unmuted"
+            status_suffix = ""
 
         raw_type = channel.get("type", 2)
         channel_type = CHANNEL_TYPE_NAMES.get(raw_type, f"type_{raw_type}")
         channel_name = channel.get("name") or "Private Call"
-        people_str = ", ".join(names) if names else "alone"
-        label = f"{channel_name} [{status_tag}] | {people_str}"
+        short_channel = channel_name[:22].rstrip() if len(channel_name) > 22 else channel_name
+        label = f"{short_channel} ({len(participants)}{status_suffix})"
 
         return {
             "label": label,
