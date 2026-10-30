@@ -17,7 +17,7 @@ from aw_core.models import Event
 from aw_watcher_discord.rpc import DiscordIPCError, DiscordRPCClient
 
 WATCHER_NAME = "aw-watcher-discord"
-EVENT_TYPE = "app.discord.voice"
+EVENT_TYPE = "general.stopwatch.discord"
 
 DEFAULT_CONFIG = """
 [aw-watcher-discord]

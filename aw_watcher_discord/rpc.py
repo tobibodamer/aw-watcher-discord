@@ -250,13 +250,21 @@ class DiscordRPCClient:
             conn_status.pop("last_ping", None)
             conn_status.pop("average_ping", None)
 
-        voice_states = channel.get("voice_states") or []
+        voice_states = sorted(
+            channel.get("voice_states") or [],
+            key=lambda item: str((item.get("user") or {}).get("id", "")),
+        )
+        channel["voice_states"] = voice_states
+
         own_vs = {}
         participants = []
+        names = []
         for entry in voice_states:
             u = entry.get("user") or {}
             uid = str(u.get("id", ""))
             vs = entry.get("voice_state") or {}
+            display_name = entry.get("nick") or u.get("global_name") or u.get("username") or uid
+            names.append(str(display_name))
             participants.append(
                 {
                     "id": uid,
@@ -277,13 +285,24 @@ class DiscordRPCClient:
         server_mute = bool(own_vs.get("mute", False))
         server_deaf = bool(own_vs.get("deaf", False))
 
+        if server_deaf or self_deaf:
+            status_tag = "Deafened"
+        elif server_mute or self_mute:
+            status_tag = "Muted"
+        else:
+            status_tag = "Unmuted"
+
         raw_type = channel.get("type", 2)
         channel_type = CHANNEL_TYPE_NAMES.get(raw_type, f"type_{raw_type}")
+        channel_name = channel.get("name") or "Private Call"
+        people_str = ", ".join(names) if names else "alone"
+        label = f"{channel_name} [{status_tag}] | {people_str}"
 
         return {
-            "title": f"{channel.get('name') or 'Private Call'} ({len(participants)} in call)",
+            "label": label,
+            "title": f"{channel_name} ({len(participants)} in call)",
             "channel_id": str(channel.get("id")),
-            "channel_name": channel.get("name") or "Private Call",
+            "channel_name": channel_name,
             "channel_type": channel_type,
             "guild_id": channel.get("guild_id"),
             "self_mute": self_mute,
