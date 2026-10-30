@@ -100,9 +100,9 @@ def main() -> None:
                 aw.heartbeat(
                     bucketname,
                     event,
-                    pulsetime=poll_time + 5.0,
+                    pulsetime=poll_time + 15.0,
                     queued=True,
-                    commit_interval=poll_time,
+                    commit_interval=0.5,
                 )
             else:
                 if was_in_voice:
