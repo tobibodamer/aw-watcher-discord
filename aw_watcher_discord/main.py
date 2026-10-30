@@ -97,7 +97,13 @@ def main() -> None:
                     last_title = title
 
                 event = Event(timestamp=datetime.now(timezone.utc), data=voice_data)
-                aw.heartbeat(bucketname, event, pulsetime=poll_time + 5.0, queued=True)
+                aw.heartbeat(
+                    bucketname,
+                    event,
+                    pulsetime=poll_time + 5.0,
+                    queued=True,
+                    commit_interval=poll_time,
+                )
             else:
                 if was_in_voice:
                     logging.info(f"Left voice call: {last_title}")
