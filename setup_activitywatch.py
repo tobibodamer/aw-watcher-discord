@@ -7,7 +7,9 @@ def parse_env(env_path: Path) -> dict:
     values = {}
     if not env_path.exists():
         return values
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig tolerates a BOM (e.g. from PowerShell 5.1's Set-Content -Encoding utf8),
+    # which would otherwise end up in the first key and silently blank DISCORD_CLIENT_ID.
+    for raw_line in env_path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
