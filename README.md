@@ -16,3 +16,13 @@ ActivityWatch watcher that tracks Discord voice sessions, mute and deafen states
    python setup_activitywatch.py
    ```
    This installs `aw-watcher-discord.exe` into `~/.local/bin` and registers `aw-watcher-discord` in `aw-qt.toml`.
+
+## Configuration
+
+Options in `aw-watcher-discord.toml` (section `[aw-watcher-discord]`):
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `poll_time` | `5.0` | Seconds between polls of the Discord client. |
+| `include_pings` | `false` | Include voice server ping samples in `voice_connection_status`. |
+| `include_raw` | `false` | Also store the raw `selected_voice_channel` and `voice_settings` RPC payloads (all local audio devices, per-user volume/pan, avatars). Changes in these split a call into separate events, so leave this off unless you need the data. |

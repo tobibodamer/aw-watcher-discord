@@ -112,6 +112,7 @@ def main() -> None:
         f'redirect_uri = "{redirect_uri}"\n'
         "poll_time = 5.0\n"
         "include_pings = false\n"
+        "include_raw = false\n"
     )
     config_file.write_text(toml_content, encoding="utf-8")
     print(f"[1/4] Wrote config to {config_file}")

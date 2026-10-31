@@ -301,7 +301,11 @@ class DiscordRPCClient:
         self._save_guild_cache()
         return entry
 
-    def fetch_voice_event_data(self, include_volatile_pings: bool = False) -> Optional[Dict[str, Any]]:
+    def fetch_voice_event_data(
+        self,
+        include_volatile_pings: bool = False,
+        include_raw: bool = False,
+    ) -> Optional[Dict[str, Any]]:
         channel_res = self.request("GET_SELECTED_VOICE_CHANNEL")
         channel = channel_res.get("data")
         if not channel or not channel.get("id"):
@@ -388,7 +392,7 @@ class DiscordRPCClient:
         )
         label = f"{prefix}{short_channel}{tail}"
 
-        return {
+        data = {
             "label": label,
             "title": f"{guild_name} / {channel_name} ({len(participants)} in call)",
             "channel_id": str(channel.get("id")),
@@ -407,7 +411,13 @@ class DiscordRPCClient:
             "suppress": suppress,
             "participant_count": len(participants),
             "participants": participants,
-            "selected_voice_channel": channel,
             "voice_connection_status": conn_status,
-            "voice_settings": voice_settings,
         }
+        # The raw RPC payloads list every local audio device, per-user volume/pan and
+        # avatars. Besides bloating each event, any change in them (plugging in a headset,
+        # adjusting someone's volume) breaks heartbeat merging and splits the call into
+        # separate events, so they are opt-in.
+        if include_raw:
+            data["selected_voice_channel"] = channel
+            data["voice_settings"] = voice_settings
+        return data
