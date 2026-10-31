@@ -16,6 +16,80 @@ def parse_env(env_path: Path) -> dict:
     return values
 
 
+WATCHER_MODULE = "aw-watcher-discord"
+# aw-qt's built-in default, used when the config has no active autostart_modules line
+# and no commented-out template line to copy it from.
+DEFAULT_AUTOSTART_MODULES = ["aw-server", "aw-watcher-afk", "aw-watcher-window"]
+
+_SECTION_RE = re.compile(r"^\s*\[\[?\s*([^\[\]]+?)\s*\]\]?\s*(?:#.*)?$")
+# [^\]]* also spans newlines, so multi-line arrays are matched as a whole.
+_AUTOSTART_RE = re.compile(r"^([ \t]*autostart_modules[ \t]*=[ \t]*\[)([^\]]*)(\])", re.MULTILINE)
+# A fresh ActivityWatch install ships the setting commented out, e.g.
+#   #autostart_modules = ["aw-server", "aw-watcher-afk", "aw-watcher-window"]
+_COMMENTED_AUTOSTART_RE = re.compile(r"^[ \t]*#[ \t]*autostart_modules[ \t]*=[ \t]*\[([^\]\n]*)\]", re.MULTILINE)
+
+
+def _parse_modules(array_body: str) -> list:
+    items = []
+    for line in array_body.splitlines():
+        for part in line.split("#", 1)[0].split(","):
+            part = part.strip().strip('"').strip("'")
+            if part:
+                items.append(part)
+    return items
+
+
+def _format_modules(modules: list) -> str:
+    return ", ".join(f'"{m}"' for m in modules)
+
+
+def add_autostart_module(text: str, module: str) -> tuple:
+    """Ensure `module` is in [aw-qt].autostart_modules.
+
+    Returns (new_text, status) where status is "present", "appended" or "created".
+    Only the [aw-qt] section is touched, never [aw-qt-testing].
+    """
+    lines = text.splitlines()
+    section_start = None
+    section_end = len(lines)
+    for i, line in enumerate(lines):
+        m = _SECTION_RE.match(line)
+        if not m:
+            continue
+        if section_start is not None:
+            section_end = i
+            break
+        if m.group(1) == "aw-qt":
+            section_start = i
+
+    if section_start is None:
+        new_line = f"autostart_modules = [{_format_modules(DEFAULT_AUTOSTART_MODULES + [module])}]"
+        prefix = lines + [""] if lines and lines[-1].strip() else lines
+        return "\n".join(prefix + ["[aw-qt]", new_line]) + "\n", "created"
+
+    head = lines[: section_start + 1]
+    body = "\n".join(lines[section_start + 1 : section_end])
+    tail = lines[section_end:]
+
+    def _join(new_body: str) -> str:
+        return "\n".join(head + ([new_body] if new_body else []) + tail) + "\n"
+
+    m = _AUTOSTART_RE.search(body)
+    if m:
+        items = _parse_modules(m.group(2))
+        if module in items:
+            return text, "present"
+        replacement = f"{m.group(1)}{_format_modules(items + [module])}{m.group(3)}"
+        return _join(body[: m.start()] + replacement + body[m.end() :]), "appended"
+
+    commented = _COMMENTED_AUTOSTART_RE.search(body)
+    defaults = _parse_modules(commented.group(1)) if commented else DEFAULT_AUTOSTART_MODULES
+    if module not in defaults:
+        defaults = defaults + [module]
+    new_line = f"autostart_modules = [{_format_modules(defaults)}]"
+    return _join(new_line + ("\n" + body if body else "")), "created"
+
+
 def main() -> None:
     repo_dir = Path(__file__).parent.resolve()
     local_appdata = Path.home() / "AppData" / "Local"
@@ -66,24 +140,14 @@ def main() -> None:
 
     # 4. Add "aw-watcher-discord" to aw-qt/aw-qt.toml autostart_modules
     aw_qt_toml = aw_base / "aw-qt" / "aw-qt.toml"
-    if aw_qt_toml.exists():
-        text = aw_qt_toml.read_text(encoding="utf-8")
-        if '"aw-watcher-discord"' not in text:
-            def _inject(match: re.Match) -> str:
-                prefix, items, suffix = match.group(1), match.group(2), match.group(3)
-                return f'{prefix}{items}, "aw-watcher-discord"{suffix}'
-
-            updated = re.sub(
-                r'(^autostart_modules\s*=\s*\[)([^\]]*)(\])',
-                _inject,
-                text,
-                count=1,
-                flags=re.MULTILINE,
-            )
-            aw_qt_toml.write_text(updated, encoding="utf-8")
-            print(f"[4/4] Added 'aw-watcher-discord' to autostart_modules in {aw_qt_toml}")
-        else:
-            print(f"[4/4] 'aw-watcher-discord' is already in {aw_qt_toml}")
+    text = aw_qt_toml.read_text(encoding="utf-8-sig") if aw_qt_toml.exists() else ""
+    updated, status = add_autostart_module(text, WATCHER_MODULE)
+    if status == "present":
+        print(f"[4/4] '{WATCHER_MODULE}' is already in autostart_modules in {aw_qt_toml}")
+    else:
+        aw_qt_toml.parent.mkdir(parents=True, exist_ok=True)
+        aw_qt_toml.write_text(updated, encoding="utf-8")
+        print(f"[4/4] Added '{WATCHER_MODULE}' to autostart_modules in {aw_qt_toml}")
 
 
 if __name__ == "__main__":
