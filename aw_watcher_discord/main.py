@@ -27,6 +27,7 @@ client_secret = ""
 redirect_uri = "http://127.0.0.1"
 poll_time = 5.0
 include_pings = false
+include_raw = false
 """
 
 
@@ -58,6 +59,7 @@ def main() -> None:
     client_secret = str(section.get("client_secret", "")).strip()
     redirect_uri = str(section.get("redirect_uri", "http://127.0.0.1")).strip()
     include_pings = bool(section.get("include_pings", False))
+    include_raw = bool(section.get("include_raw", False))
 
     if not client_id or not client_secret:
         logging.warning(
@@ -87,7 +89,10 @@ def main() -> None:
             if rpc.pipe is None:
                 rpc.connect()
 
-            voice_data = rpc.fetch_voice_event_data(include_volatile_pings=include_pings)
+            voice_data = rpc.fetch_voice_event_data(
+                include_volatile_pings=include_pings,
+                include_raw=include_raw,
+            )
             if voice_data:
                 guild_key = str(voice_data.get("guild_id") or "dm")
                 if guild_key not in synced_guilds:
