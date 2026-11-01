@@ -328,19 +328,17 @@ class DiscordRPCClient:
 
         own_vs = {}
         participants = []
-        names = []
         for entry in voice_states:
             u = entry.get("user") or {}
             uid = str(u.get("id", ""))
             vs = entry.get("voice_state") or {}
-            display_name = entry.get("nick") or u.get("global_name") or u.get("username") or uid
-            names.append(str(display_name))
             participants.append(
                 {
                     "id": uid,
                     "username": u.get("username"),
                     "global_name": u.get("global_name"),
                     "nick": entry.get("nick"),
+                    "local_mute": bool(entry.get("mute")),
                     "self_mute": bool(vs.get("self_mute")),
                     "self_deaf": bool(vs.get("self_deaf")),
                     "server_mute": bool(vs.get("mute")),
@@ -398,6 +396,8 @@ class DiscordRPCClient:
             "channel_id": str(channel.get("id")),
             "channel_name": channel_name,
             "channel_type": channel_type,
+            "channel_topic": str(channel.get("topic") or ""),
+            "user_limit": int(channel.get("user_limit") or 0),
             "guild_id": channel.get("guild_id"),
             "guild_name": guild_name,
             "guild_icon_url": guild_meta.get("icon_url"),
