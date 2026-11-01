@@ -332,12 +332,14 @@ class DiscordRPCClient:
             u = entry.get("user") or {}
             uid = str(u.get("id", ""))
             vs = entry.get("voice_state") or {}
+            is_self = bool(self.user_id and uid == self.user_id)
             participants.append(
                 {
                     "id": uid,
                     "username": u.get("username"),
                     "global_name": u.get("global_name"),
                     "nick": entry.get("nick"),
+                    "self": is_self,
                     "local_mute": bool(entry.get("mute")),
                     "self_mute": bool(vs.get("self_mute")),
                     "self_deaf": bool(vs.get("self_deaf")),
@@ -345,7 +347,7 @@ class DiscordRPCClient:
                     "server_deaf": bool(vs.get("deaf")),
                 }
             )
-            if self.user_id and uid == self.user_id:
+            if is_self:
                 own_vs = vs
 
         self_mute = bool(own_vs.get("self_mute", voice_settings.get("mute", False)))
@@ -404,6 +406,7 @@ class DiscordRPCClient:
             "voice_status": voice_status,
             "color": color,
             "color_key": color_key,
+            "user_id": self.user_id,
             "self_mute": self_mute,
             "self_deaf": self_deaf,
             "server_mute": server_mute,
