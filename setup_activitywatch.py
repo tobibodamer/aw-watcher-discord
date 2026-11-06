@@ -24,6 +24,26 @@ WATCHER_MODULE = "aw-watcher-discord"
 DEFAULT_AUTOSTART_MODULES = ["aw-server", "aw-watcher-afk", "aw-watcher-window"]
 
 _SECTION_RE = re.compile(r"^\s*\[\[?\s*([^\[\]]+?)\s*\]\]?\s*(?:#.*)?$")
+
+
+def parse_toml_section(text: str, section: str) -> dict:
+    """Parse the flat `key = value` pairs of a single TOML section as strings."""
+    values = {}
+    in_section = False
+    for line in text.splitlines():
+        m = _SECTION_RE.match(line)
+        if m:
+            in_section = m.group(1) == section
+            continue
+        if in_section and "=" in line:
+            key, _, value = line.partition("=")
+            value = value.split("#", 1)[0].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            values[key.strip()] = value
+    return values
+
+
 # [^\]]* also spans newlines, so multi-line arrays are matched as a whole.
 _AUTOSTART_RE = re.compile(r"^([ \t]*autostart_modules[ \t]*=[ \t]*\[)([^\]]*)(\])", re.MULTILINE)
 # A fresh ActivityWatch install ships the setting commented out, e.g.
@@ -99,22 +119,52 @@ def main() -> None:
 
     # 1. Create AppData config file: aw-watcher-discord/aw-watcher-discord.toml
     env_vars = parse_env(repo_dir / ".env")
-    client_id = env_vars.get("DISCORD_CLIENT_ID", "")
-    client_secret = env_vars.get("DISCORD_CLIENT_SECRET", "")
-    redirect_uri = env_vars.get("DISCORD_REDIRECT_URI", "http://127.0.0.1") or "http://127.0.0.1"
 
     config_dir = aw_base / "aw-watcher-discord"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_file = config_dir / "aw-watcher-discord.toml"
+    # .env wins over the existing config file, which wins over defaults, so
+    # re-running setup never wipes manually set options like bot_token.
+    existing = parse_toml_section(
+        config_file.read_text(encoding="utf-8-sig") if config_file.exists() else "",
+        WATCHER_MODULE,
+    )
+
+    def resolve(env_key: str, toml_key: str, default: str) -> str:
+        env_val = env_vars.get(env_key, "")
+        if env_val:
+            return env_val
+        if toml_key in existing and existing[toml_key] != "":
+            return existing[toml_key]
+        return default
+
+    client_id = resolve("DISCORD_CLIENT_ID", "client_id", "")
+    client_secret = resolve("DISCORD_CLIENT_SECRET", "client_secret", "")
+    redirect_uri = (
+        resolve("DISCORD_REDIRECT_URI", "redirect_uri", "http://127.0.0.1")
+        or "http://127.0.0.1"
+    )
+    try:
+        poll_time = float(resolve("", "poll_time", "5.0"))
+    except ValueError:
+        poll_time = 5.0
+    include_pings = resolve("", "include_pings", "false").lower() in ("true", "1")
+    include_raw = resolve("", "include_raw", "false").lower() in ("true", "1")
+    presence_source = resolve("PRESENCE_SOURCE", "presence_source", "off").strip().lower()
+    bot_token = resolve("DISCORD_BOT_TOKEN", "bot_token", "")
+    presence_user_id = resolve("DISCORD_PRESENCE_USER_ID", "presence_user_id", "")
 
     toml_content = (
         "\n[aw-watcher-discord]\n"
         f'client_id = "{client_id}"\n'
         f'client_secret = "{client_secret}"\n'
         f'redirect_uri = "{redirect_uri}"\n'
-        "poll_time = 5.0\n"
-        "include_pings = false\n"
-        "include_raw = false\n"
+        f"poll_time = {poll_time}\n"
+        f"include_pings = {str(include_pings).lower()}\n"
+        f"include_raw = {str(include_raw).lower()}\n"
+        f'presence_source = "{presence_source}"\n'
+        f'bot_token = "{bot_token}"\n'
+        f'presence_user_id = "{presence_user_id}"\n'
     )
     config_file.write_text(toml_content, encoding="utf-8")
     print(f"[1/4] Wrote config to {config_file}")

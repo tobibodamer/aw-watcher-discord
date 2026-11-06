@@ -12,6 +12,7 @@ build/
 .env
 token_cache.json
 guild_colors.json
+app_colors.json
 *.db
 *.db-shm
 *.db-wal

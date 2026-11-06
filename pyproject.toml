@@ -12,6 +12,7 @@ dependencies = [
     "aw-client>=0.5.11",
     "aw-core>=0.5.11",
     "Pillow>=10.0.0",
+    "websocket-client>=1.6",
 ]
 
 [project.scripts]

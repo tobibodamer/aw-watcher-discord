@@ -3,7 +3,7 @@ import io
 import json
 import logging
 import urllib.request
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 
 from PIL import Image
 
@@ -63,7 +63,12 @@ def extract_dominant_color(icon_url: Optional[str]) -> str:
         rgb_img.putdata(pixels)
         pal_img = rgb_img.quantize(colors=12)
         palette = pal_img.getpalette() or []
-        counts = sorted(pal_img.getcolors() or [], reverse=True)
+        # P-mode getcolors returns (count, palette index) pairs; the Pillow
+        # stubs union this with the RGB tuple shape, hence the cast.
+        counts = sorted(
+            cast("List[Tuple[int, int]]", pal_img.getcolors() or []),
+            reverse=True,
+        )
 
         best_score = -1.0
         best_rgb: Optional[Tuple[int, int, int]] = None
@@ -131,6 +136,64 @@ def build_state_colors(base_hex: str) -> Dict[str, str]:
         "muted": muted_hex,
         "deafened": deafened_hex,
     }
+
+
+def sync_app_categories_to_aw(
+    server_url: str,
+    app_key: str,
+    app_name: str,
+    color: str,
+) -> bool:
+    try:
+        settings_url = f"{server_url.rstrip('/')}/api/0/settings"
+        with urllib.request.urlopen(settings_url, timeout=5) as resp:
+            settings = json.loads(resp.read().decode("utf-8"))
+
+        classes = list(settings.get("classes") or [])
+
+        desired_rules = [
+            {
+                "name": ["Discord", app_name],
+                "rule": {
+                    "type": "regex",
+                    "regex": f"^discord-app:{app_key}$",
+                    "select_keys": ["color_key"],
+                    "priority": 50,
+                },
+                "data": {"color": color},
+            },
+        ]
+
+        changed = False
+        for desired in desired_rules:
+            existing_idx = next(
+                (i for i, c in enumerate(classes) if c.get("name") == desired["name"]),
+                None,
+            )
+            if existing_idx is None:
+                classes.append(desired)
+                changed = True
+            elif classes[existing_idx] != desired:
+                classes[existing_idx] = desired
+                changed = True
+
+        if changed:
+            payload = json.dumps(classes).encode("utf-8")
+            req = urllib.request.Request(
+                f"{settings_url}/classes",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp.read()
+            logger.info(
+                f"Synced ActivityWatch timeline color for Discord activity '{app_name}' ({color})"
+            )
+        return True
+    except Exception as exc:
+        logger.warning(f"Failed to sync Discord activity colors to ActivityWatch: {exc}")
+        return False
 
 
 def sync_guild_categories_to_aw(
